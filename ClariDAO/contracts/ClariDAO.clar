@@ -173,3 +173,39 @@
   }
 )
 
+;; This function allows users to delegate their voting power to another address
+;; with a specified timelock period during which the delegation cannot be revoked
+(define-public (delegate-voting-power (delegate-to principal) (amount uint) (lock-period uint))
+  (let
+    (
+      (user-balance (get-token-balance tx-sender))
+      (current-delegation (default-to 
+        { delegate-to: tx-sender, amount: u0, locked-until-block: u0, active: false } 
+        (map-get? delegations tx-sender)))
+      (delegate-data (default-to 
+        { total-delegated: u0, delegators: (list) } 
+        (map-get? delegate-received delegate-to)))
+      (updated-delegators (unwrap-panic (as-max-len? 
+        (append (get delegators delegate-data) tx-sender) u50)))
+    )
+    
+    ;; Verify user has enough tokens to delegate
+    (asserts! (>= user-balance amount) ERR-INSUFFICIENT-TOKEN-BALANCE)
+    
+    ;; Set up the delegation
+    (map-set delegations tx-sender {
+      delegate-to: delegate-to,
+      amount: amount,
+      locked-until-block: (+ block-height lock-period),
+      active: true
+    })
+    
+    ;; Update the delegate's received delegation data
+    (map-set delegate-received delegate-to {
+      total-delegated: (+ (get total-delegated delegate-data) amount),
+      delegators: updated-delegators
+    })
+    
+    (ok true)
+  )
+)
